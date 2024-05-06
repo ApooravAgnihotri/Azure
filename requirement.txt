@@ -10,7 +10,7 @@ azure-core
 azure-identity
 azure-keyvault
 azure-kusto-data
-azure-search-documents>=11.4.0b11
+azure-search-documents==11.4.0b11
 azure-storage-blob
 pyodbc
 bs4
