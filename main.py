@@ -42,8 +42,12 @@ cursor = conn.cursor()
 
 print("--- Cnnection Established---")
 
+# cursor.close()
 
-table_name = "vwEdrLogsDetailByShivi" 
+# print(" --- closing the database ---")
+
+
+table_name = "pk_QA_test" 
 
 # Execute the SELECT statement
 try:
@@ -59,7 +63,7 @@ except Exception as e:
 # Import needed CogSearch functions
 
 from azure.core.credentials import AzureKeyCredential  
-from azure.search.documents import SearchClient  
+from azure.search.documents import SearchClient 
 from azure.search.documents.indexes import SearchIndexClient, SearchIndexerClient  
 from azure.search.documents.models import (
     QueryAnswerType,
@@ -70,6 +74,7 @@ from azure.search.documents.models import (
     VectorizableTextQuery,
     VectorFilterMode,    
 )
+
 from azure.search.documents.indexes.models import (  
     AzureOpenAIEmbeddingSkill,  
     AzureOpenAIParameters,  
@@ -79,7 +84,7 @@ from azure.search.documents.indexes.models import (
     FieldMapping,  
     HnswParameters,  
     HnswVectorSearchAlgorithmConfiguration,  
-    IndexProjectionMode,  
+    #IndexProjectionMode,  
     InputFieldMappingEntry,
     MergeSkill,
     OutputFieldMappingEntry,  
@@ -90,10 +95,10 @@ from azure.search.documents.indexes.models import (
     SearchIndexer,  
     SearchIndexerDataContainer,  
     SearchIndexerDataSourceConnection,  
-    SearchIndexerIndexProjectionSelector,  
-    SearchIndexerIndexProjections,  
-    SearchIndexerIndexProjectionsParameters,  
-    SearchIndexerSkillset,  
+    # SearchIndexerIndexProjectionSelector,  
+    # SearchIndexerIndexProjections,  
+    #SearchIndexerIndexProjectionsParameters,  
+    SearchIndexerSkillset, 
     SemanticConfiguration,  
     SemanticField,  
     SemanticSettings,  
@@ -101,7 +106,7 @@ from azure.search.documents.indexes.models import (
     SqlIntegratedChangeTrackingPolicy,
     VectorSearch,  
     VectorSearchAlgorithmKind,  
-    VectorSearchAlgorithmMetric,  
+    #VectorSearchAlgorithmMetric,  
     VectorSearchProfile,  
 )  
 
@@ -129,65 +134,230 @@ data_source = ds_client.create_or_update_data_source_connection(data_source_conn
 print(f"Data source '{data_source.name}' created or updated")
 
 
-# # Create a search index
-# index_client = SearchIndexClient(
-#     endpoint=service_endpoint, credential=cogsearch_credential)
+# Create a search index
+index_client = SearchIndexClient(
+    endpoint=service_endpoint, credential=cogsearch_credential)
 
-# fields = [
-#     # Properties of individual chunk
-#     SearchField(name="Id", type=SearchFieldDataType.String, key=True,
-#                 sortable=True, filterable=True, facetable=True, analyzer_name="keyword"),
-#     SearchField(name="chunk", type=SearchFieldDataType.String, sortable=False, filterable=False, facetable=False),
-#     SearchField(name="vector", type=SearchFieldDataType.Collection(SearchFieldDataType.Single), 
-#                 vector_search_dimensions=EMBEDDING_LENGTH, vector_search_profile="my-vector-search-profile"),
-#     # Properties of original row in DB that the chunk belonged to
-#     SearchField(name="parent_id", type=SearchFieldDataType.String, sortable=True, filterable=True, facetable=True),
-#     SearchField(name="parent_product_id", type=SearchFieldDataType.String, sortable=True, filterable=True, facetable=True),
-#     SearchField(name="parent_text", type=SearchFieldDataType.String, sortable=True, filterable=True, facetable=True),
-#     SearchField(name="parent_summary", type=SearchFieldDataType.String, sortable=True, filterable=True, facetable=True),
-#     SearchField(name="parent_score", type=SearchFieldDataType.Int64, sortable=True, filterable=True, facetable=True)
-# ]
+fields = [
+    # Properties of individual chunk
+    SearchField(name="Id", type=SearchFieldDataType.String, key=True,
+                sortable=True, filterable=True, facetable=True, analyzer_name="keyword"),
+    SearchField(name="chunk", type=SearchFieldDataType.String, sortable=False, filterable=False, facetable=False),
+    SearchField(name="vector", type=SearchFieldDataType.Collection(SearchFieldDataType.Single), 
+                vector_search_dimensions=EMBEDDING_LENGTH, vector_search_profile="my-vector-search-profile"),
+    # Properties of original row in DB that the chunk belonged to
+    SearchField(name="id", type=SearchFieldDataType.String, sortable=True, filterable=True, facetable=True),
+    SearchField(name="question", type=SearchFieldDataType.String, sortable=True, filterable=True, facetable=True),
+    SearchField(name="answer", type=SearchFieldDataType.String, sortable=True, filterable=True, facetable=True)
 
-# # Configure the vector search configuration  
-# vector_search = VectorSearch(
-#     algorithms=[
-#         HnswVectorSearchAlgorithmConfiguration(
-#             name="my-hnsw-config",
-#             kind=VectorSearchAlgorithmKind.HNSW
-#         )
+    # SearchField(name="parent_summary", type=SearchFieldDataType.String, sortable=True, filterable=True, facetable=True),
+    # SearchField(name="parent_score", type=SearchFieldDataType.Int64, sortable=True, filterable=True, facetable=True)
+]
+
+# Configure the vector search configuration  
+vector_search = VectorSearch(
+    algorithms=[
+        HnswVectorSearchAlgorithmConfiguration(
+            name="my-hnsw-config",
+            kind=VectorSearchAlgorithmKind.HNSW
+        )
+    ],
+    profiles=[
+        VectorSearchProfile(
+            name="my-vector-search-profile",
+            algorithm="my-hnsw-config",
+            vectorizer="my-openai"
+        )
+    ],
+    vectorizers=[
+        AzureOpenAIVectorizer(
+            name="my-openai",
+            kind="azureOpenAI",
+            azure_open_ai_parameters=AzureOpenAIParameters(
+                resource_uri=openai.api_base,
+                deployment_id=openai_deployment,
+                api_key=openai.api_key
+            )
+        )  
+    ]  
+)
+
+semantic_config = SemanticConfiguration(
+    name="my-semantic-config",
+    prioritized_fields=PrioritizedFields(
+        prioritized_content_fields=[SemanticField(field_name="Id")]
+    )
+)
+
+# Create the semantic settings with the configuration
+semantic_settings = SemanticSettings(configurations=[semantic_config])
+
+# Create the search index with the semantic settings
+index = SearchIndex(name=index_name, fields=fields,
+                    vector_search=vector_search, semantic_settings=semantic_settings)
+result = index_client.create_or_update_index(index)
+print(f'{result.name} created')
+
+
+# Create a skillset  
+skillset_name = f"{index_name}-skillset"
+
+split_skill = SplitSkill(  
+    description="Split skill to chunk documents",  
+    text_split_mode="pages",  
+    context="/document",  
+    maximum_page_length=300,  
+    page_overlap_length=20,  
+    inputs=[  
+        InputFieldMappingEntry(name="text", source="/document/TextConcat"),  
+    ],  
+    outputs=[  
+        OutputFieldMappingEntry(name="textItems", target_name="pages")  
+    ]  
+)
+
+embedding_skill = AzureOpenAIEmbeddingSkill(  
+    description="Skill to generate embeddings via Azure OpenAI",  
+    context="/document/pages/*",  
+    resource_uri=openai.api_base,  
+    deployment_id=openai_deployment,  
+    api_key=openai.api_key,  
+    inputs=[  
+        InputFieldMappingEntry(name="text", source="/document/pages/*"),  
+    ],  
+    outputs=[  
+        OutputFieldMappingEntry(name="embedding", target_name="vector")  
+    ]  
+)
+
+field_mappings = [
+    {
+        "source": "/document/pages/*",
+        "target": "chunk"
+    },
+    {
+        "source": "/document/pages/*/vector",
+        "target": "vector"
+    },
+    {
+        "source": "/document/Id",
+        "target": "id"
+    },
+    {
+        "source": "/document/question",
+        "target": "question"
+    },
+    {
+        "source": "/document/answer",
+        "target": "answer"
+    }
+]
+
+index_projections = [
+    {
+        "targetIndexName": index_name,
+        "fieldMappings": field_mappings,
+        "parentKeyFieldName": "id",
+        "sourceContext": "/document/pages/*"
+    }
+]
+
+skillset = SearchIndexerSkillset(
+    name=skillset_name,
+    description="Skillset to chunk documents and generating embeddings",
+    skills=[split_skill, embedding_skill],
+    indexProjections=index_projections
+)
+
+
+# index_projections = SearchIndexerIndexProjections(  
+#     selectors=[  
+#         SearchIndexerIndexProjectionSelector(  
+#             target_index_name=index_name,  
+#             parent_key_field_name="parent_id", # Note: this populates the "parent_id" search field
+#             source_context="/document/pages/*",  
+#             mappings=[  
+#                 InputFieldMappingEntry(name="chunk", source="/document/pages/*"),
+#                 InputFieldMappingEntry(name="vector", source="/document/pages/*/vector"),
+#                 InputFieldMappingEntry(name="parent_product_id", source="/document/ProductId"),
+#                 InputFieldMappingEntry(name="parent_text", source="/document/Text"),
+#                 InputFieldMappingEntry(name="parent_summary", source="/document/Summary"),
+#                 InputFieldMappingEntry(name="parent_score", source="/document/Score")
+#             ],  
+#         ),  
 #     ],
-#     profiles=[
-#         VectorSearchProfile(
-#             name="my-vector-search-profile",
-#             algorithm="my-hnsw-config",
-#             vectorizer="my-openai"
-#         )
-#     ],
-#     vectorizers=[
-#         AzureOpenAIVectorizer(
-#             name="my-openai",
-#             kind="azureOpenAI",
-#             azure_open_ai_parameters=AzureOpenAIParameters(
-#                 resource_uri=openai.api_base,
-#                 deployment_id=openai_deployment,
-#                 api_key=openai.api_key
-#             )
-#         )  
-#     ]  
+# )  
+# #Define field mappings for target index projection
+
+
+# skillset = SearchIndexerSkillset(  
+#     name=skillset_name,  
+#     description="Skillset to chunk documents and generating embeddings",  
+#     skills=[split_skill, embedding_skill],
+#     index_projections=index_projections  
 # )
+  
 
-# semantic_config = SemanticConfiguration(
-#     name="my-semantic-config",
-#     prioritized_fields=PrioritizedFields(
-#         prioritized_content_fields=[SemanticField(field_name="Id")]
-#     )
-# )
+# Define field mappings for target index projection
+# Define field mappings for target index projection (assuming these are just field names)
 
-# # Create the semantic settings with the configuration
-# semantic_settings = SemanticSettings(configurations=[semantic_config])
 
-# # Create the search index with the semantic settings
-# index = SearchIndex(name=index_name, fields=fields,
-#                     vector_search=vector_search, semantic_settings=semantic_settings)
-# result = index_client.create_or_update_index(index)
-# print(f'{result.name} created')
+client = SearchIndexerClient(service_endpoint, cogsearch_credential)  
+client.create_or_update_skillset(skillset)  
+print(f' {skillset.name} created')
+
+
+# Create an indexer  
+indexer_name = f"{index_name}-indexer"  
+
+indexer = SearchIndexer(  
+    name=indexer_name,  
+    description="Indexer to chunk documents and generate embeddings",  
+    skillset_name=skillset_name,  
+    target_index_name=index_name,  
+    data_source_name=data_source.name
+)  
+  
+indexer_client = SearchIndexerClient(service_endpoint, cogsearch_credential)
+indexer_result = indexer_client.create_or_update_indexer(indexer)  
+
+# Run the indexer  
+indexer_client.run_indexer(indexer_name)
+print(f' {indexer_name} created')
+
+# Get the status of the indexer  
+indexer_status = indexer_client.get_indexer_status(indexer_name)
+print(f"Indexer status: {indexer_status.status}")
+
+# Allow some time for the indexer to process the data
+import time
+time.sleep(30)
+
+user_query = "What is a DDoS attack?"
+
+search_client = SearchClient(service_endpoint, index_name, credential=cogsearch_credential)
+vector_query = VectorizableTextQuery(text=user_query, k=3, fields="vector", exhaustive=True)
+# Use the query below to pass in the raw vector query instead of the query vectorization
+#vector_query = RawVectorQuery(vector=generate_embeddings(user_query), k=3, fields="vector")
+  
+results = search_client.search(
+    search_text=None,  
+    vector_queries= [vector_query],
+    select=["Id","chunk", "id", "question", "answer"],
+    top=3
+)
+
+print("here are the result form the search vector  :::----",results)
+
+
+for result in results:
+    print(f"Search score: {result['@search.score']}")
+    print(f"Chunk id: {result['Id']}")
+    print(f"question : {result['queston']}")
+    print(f"answer: {result['answer']}")
+    # print(f"Product Id: {result['parent_product_id']}")
+    # print(f"Text chunk: {result['chunk']}") 
+    # print(f"Review summary: {result['parent_summary']}")
+    # print(f"Review text: {result['parent_text']}")
+    # print(f"Review score: {result['parent_score']}")
+    print("-----")
