@@ -1,4 +1,4 @@
-## installation 
+## Installation 
 ```bash
 pip install -r requirement.txt
 ```
@@ -9,8 +9,10 @@ pip install -r requirement.txt
 ```bash
 python -m venv myenv
 ```
-#Activating a Virtual Environment:
+# Activating a Virtual Environment:
+```bash
 myenv\Scripts\activate
+```
 
 ! Back to the root dir.
 
