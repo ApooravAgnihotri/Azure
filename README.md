@@ -14,7 +14,7 @@ python -m venv myenv
 ```bash
 myenv\Scripts\activate
 ```
-## After activating Virtual environment Installa requirement
+## After activating Virtual environment Install requirements
 ```bash
 pip install -r requirement.txt
 ```
