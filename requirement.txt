@@ -22,7 +22,7 @@ matplotlib
 openai
 pandas
 plotly
-promptflow>=0.1.0b8
+promptflow==0.1.0b8
 promptflow-tools
 python-dotenv
 ipywidgets

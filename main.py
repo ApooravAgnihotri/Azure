@@ -63,7 +63,7 @@ except Exception as e:
 # Import needed CogSearch functions
 
 from azure.core.credentials import AzureKeyCredential  
-from azure.search.documents import SearchClient  
+from azure.search.documents import SearchClient 
 from azure.search.documents.indexes import SearchIndexClient, SearchIndexerClient  
 from azure.search.documents.models import (
     QueryAnswerType,
@@ -95,10 +95,10 @@ from azure.search.documents.indexes.models import (
     SearchIndexer,  
     SearchIndexerDataContainer,  
     SearchIndexerDataSourceConnection,  
-    SearchIndexerIndexProjectionSelector,  
-    SearchIndexerIndexProjections,  
-    SearchIndexerIndexProjectionsParameters,  
-    SearchIndexerSkillset,  
+    # SearchIndexerIndexProjectionSelector,  
+    # SearchIndexerIndexProjections,  
+    #SearchIndexerIndexProjectionsParameters,  
+    SearchIndexerSkillset, 
     SemanticConfiguration,  
     SemanticField,  
     SemanticSettings,  
@@ -199,36 +199,76 @@ result = index_client.create_or_update_index(index)
 print(f'{result.name} created')
 
 
-# # Create a skillset  
-# skillset_name = f"{index_name}-skillset"
+# Create a skillset  
+skillset_name = f"{index_name}-skillset"
 
-# split_skill = SplitSkill(  
-#     description="Split skill to chunk documents",  
-#     text_split_mode="pages",  
-#     context="/document",  
-#     maximum_page_length=300,  
-#     page_overlap_length=20,  
-#     inputs=[  
-#         InputFieldMappingEntry(name="text", source="/document/TextConcat"),  
-#     ],  
-#     outputs=[  
-#         OutputFieldMappingEntry(name="textItems", target_name="pages")  
-#     ]  
-# )
+split_skill = SplitSkill(  
+    description="Split skill to chunk documents",  
+    text_split_mode="pages",  
+    context="/document",  
+    maximum_page_length=300,  
+    page_overlap_length=20,  
+    inputs=[  
+        InputFieldMappingEntry(name="text", source="/document/TextConcat"),  
+    ],  
+    outputs=[  
+        OutputFieldMappingEntry(name="textItems", target_name="pages")  
+    ]  
+)
 
-# embedding_skill = AzureOpenAIEmbeddingSkill(  
-#     description="Skill to generate embeddings via Azure OpenAI",  
-#     context="/document/pages/*",  
-#     resource_uri=openai.api_base,  
-#     deployment_id=openai_deployment,  
-#     api_key=openai.api_key,  
-#     inputs=[  
-#         InputFieldMappingEntry(name="text", source="/document/pages/*"),  
-#     ],  
-#     outputs=[  
-#         OutputFieldMappingEntry(name="embedding", target_name="vector")  
-#     ]  
-# )  
+embedding_skill = AzureOpenAIEmbeddingSkill(  
+    description="Skill to generate embeddings via Azure OpenAI",  
+    context="/document/pages/*",  
+    resource_uri=openai.api_base,  
+    deployment_id=openai_deployment,  
+    api_key=openai.api_key,  
+    inputs=[  
+        InputFieldMappingEntry(name="text", source="/document/pages/*"),  
+    ],  
+    outputs=[  
+        OutputFieldMappingEntry(name="embedding", target_name="vector")  
+    ]  
+)
+
+field_mappings = [
+    {
+        "source": "/document/pages/*",
+        "target": "chunk"
+    },
+    {
+        "source": "/document/pages/*/vector",
+        "target": "vector"
+    },
+    {
+        "source": "/document/Id",
+        "target": "id"
+    },
+    {
+        "source": "/document/question",
+        "target": "question"
+    },
+    {
+        "source": "/document/answer",
+        "target": "answer"
+    }
+]
+
+index_projections = [
+    {
+        "targetIndexName": index_name,
+        "fieldMappings": field_mappings,
+        "parentKeyFieldName": "id",
+        "sourceContext": "/document/pages/*"
+    }
+]
+
+skillset = SearchIndexerSkillset(
+    name=skillset_name,
+    description="Skillset to chunk documents and generating embeddings",
+    skills=[split_skill, embedding_skill],
+    indexProjections=index_projections
+)
+
 
 # index_projections = SearchIndexerIndexProjections(  
 #     selectors=[  
@@ -247,6 +287,8 @@ print(f'{result.name} created')
 #         ),  
 #     ],
 # )  
+# #Define field mappings for target index projection
+
 
 # skillset = SearchIndexerSkillset(  
 #     name=skillset_name,  
@@ -255,36 +297,41 @@ print(f'{result.name} created')
 #     index_projections=index_projections  
 # )
   
-# client = SearchIndexerClient(service_endpoint, cogsearch_credential)  
-# client.create_or_update_skillset(skillset)  
-# print(f' {skillset.name} created')
+
+# Define field mappings for target index projection
+# Define field mappings for target index projection (assuming these are just field names)
 
 
-# # Create an indexer  
-# indexer_name = f"{index_name}-indexer"  
+client = SearchIndexerClient(service_endpoint, cogsearch_credential)  
+client.create_or_update_skillset(skillset)  
+print(f' {skillset.name} created')
 
-# indexer = SearchIndexer(  
-#     name=indexer_name,  
-#     description="Indexer to chunk documents and generate embeddings",  
-#     skillset_name=skillset_name,  
-#     target_index_name=index_name,  
-#     data_source_name=data_source.name
-# )  
+
+# Create an indexer  
+indexer_name = f"{index_name}-indexer"  
+
+indexer = SearchIndexer(  
+    name=indexer_name,  
+    description="Indexer to chunk documents and generate embeddings",  
+    skillset_name=skillset_name,  
+    target_index_name=index_name,  
+    data_source_name=data_source.name
+)  
   
-# indexer_client = SearchIndexerClient(service_endpoint, cogsearch_credential)
-# indexer_result = indexer_client.create_or_update_indexer(indexer)  
+indexer_client = SearchIndexerClient(service_endpoint, cogsearch_credential)
+indexer_result = indexer_client.create_or_update_indexer(indexer)  
 
-# # Run the indexer  
-# indexer_client.run_indexer(indexer_name)
-# print(f' {indexer_name} created')
+# Run the indexer  
+indexer_client.run_indexer(indexer_name)
+print(f' {indexer_name} created')
 
-# # Get the status of the indexer  
-# indexer_status = indexer_client.get_indexer_status(indexer_name)
-# print(f"Indexer status: {indexer_status.status}")
+# Get the status of the indexer  
+indexer_status = indexer_client.get_indexer_status(indexer_name)
+print(f"Indexer status: {indexer_status.status}")
 
-# # Allow some time for the indexer to process the data
-# import time
-# time.sleep(30)
+# Allow some time for the indexer to process the data
+import time
+time.sleep(30)
 
 user_query = "What is a DDoS attack?"
 
@@ -299,6 +346,8 @@ results = search_client.search(
     select=["Id","chunk", "id", "question", "answer"],
     top=3
 )
+
+print("here are the result form the search vector  :::----",results)
 
 
 for result in results:
