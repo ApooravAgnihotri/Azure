@@ -1,0 +1,6 @@
+pyodbc==4.0.39
+python-dotenv==1.0.0
+SQLAlchemy
+langchain-community
+langchain-openai
+langchain
